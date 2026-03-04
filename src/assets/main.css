@@ -1,0 +1,28 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+  width: 100%;
+  font-family: "Microsoft JhengHei", "PingFang TC", sans-serif;
+}
+
+#app {
+  height: 100%;
+  width: 100%;
+}
+
+/* el-menu 不要右側 border，寬度撐滿側邊欄 */
+.el-menu {
+  border-right: none !important;
+  width: 100% !important;
+}
+
+/* el-menu-item 文字不要換行 */
+.el-menu-item {
+  white-space: nowrap;
+}
