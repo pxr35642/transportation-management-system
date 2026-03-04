@@ -1,6 +1,14 @@
 import { createRouter, createWebHistory } from "vue-router";
 
 const routes = [
+  // 登入頁面不需要版型
+  {
+    path: "/login",
+    name: "Login",
+    component: () => import("@/views/LoginView.vue"),
+    meta: { title: "登入", public: true },
+  },
+
   { path: "/", redirect: "/dashboard" },
   {
     path: "/dashboard",
@@ -59,6 +67,18 @@ const router = createRouter({
 
 router.beforeEach((to) => {
   document.title = `${to.meta.title} | 運輸管理系統`;
+
+  const token = localStorage.getItem("token");
+
+  // 未登入且不是公開頁面，跳到登入頁
+  if (!to.meta.public && !token) {
+    return { name: "Login" };
+  }
+
+  // 已登入還去登入頁，跳到儀表板
+  if (to.name === "Login" && token) {
+    return { name: "Dashboard" };
+  }
 });
 
 export default router;
