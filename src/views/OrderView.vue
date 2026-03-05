@@ -41,14 +41,14 @@
 
     <!-- 訂單列表 -->
     <el-card shadow="never" class="table-card">
-      <el-table :data="pagedOrders" stripe v-loading="loading" style="width: 100%" table-layout="auto">
+      <el-table :data="orders" stripe v-loading="loading" style="width: 100%" table-layout="auto">
         <el-table-column prop="orderNo" label="訂單編號" min-width="180" />
         <el-table-column prop="customerName" label="客戶名稱" min-width="100" />
         <el-table-column prop="origin" label="起點" min-width="80" />
         <el-table-column prop="destination" label="終點" min-width="80" />
         <el-table-column prop="driver" label="司機" min-width="80" />
         <el-table-column prop="status" label="狀態" min-width="80" :formatter="formatStatus" />
-        <el-table-column prop="createdAt" label="建立時間" min-width="150" />
+        <el-table-column prop="createdAt" label="建立時間" min-width="160" :formatter="formatTime" />
         <el-table-column label="操作" min-width="120" fixed="right">
           <template #default="scope">
             <el-button type="primary" link @click="openEditDialog(scope.row)">編輯</el-button>
@@ -58,7 +58,7 @@
       </el-table>
       <!-- 分頁 -->
       <div class="pagination">
-        <el-pagination v-model:current-page="currentPage" v-model:page-size="pageSize" :total="filteredOrders.length"
+        <el-pagination v-model:current-page="currentPage" v-model:page-size="pageSize" :total="total"
           :page-sizes="[10, 20, 50]" layout="total, sizes, prev, pager, next" @change="handlePageChange" />
       </div>
     </el-card>
@@ -100,25 +100,29 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { orderApi } from '@/api/orderApi'
+import { formatDate, formatOrderStatus } from '@/utils/format'
 
-// ─── 狀態變數 ────────────────────────────────────────────────
-const loading = ref(false)  // 表格載入中
-const submitLoading = ref(false)  // 表單送出中
-const dialogVisible = ref(false)  // Dialog 開關
-const isEdit = ref(false)  // 判斷是新增還是編輯
-const formRef = ref(null)   // 表單 ref，用來呼叫驗證
+// ─── 頁面狀態 ────────────────────────────────────────────────
+const loading = ref(false)  // 表格載入中（顯示 loading 遮罩）
+const submitLoading = ref(false)  // 表單送出中（防止重複點擊）
+const dialogVisible = ref(false)  // 控制新增/編輯 Dialog 開關
+const isEdit = ref(false)  // true=編輯模式 false=新增模式
+const formRef = ref(null)   // 表單 ref，用來呼叫 validate()
 
 // ─── 搜尋條件 ────────────────────────────────────────────────
-const searchKeyword = ref('')
-const searchStatus = ref(null)
+const searchKeyword = ref('')     // 關鍵字（訂單編號 or 客戶名稱）
+const searchStatus = ref(null)   // 狀態篩選，null 代表全部
 
 // ─── 分頁 ────────────────────────────────────────────────────
-const currentPage = ref(1)
-const pageSize = ref(10)
+const currentPage = ref(1)        // 目前頁碼
+const pageSize = ref(10)       // 每頁筆數
+const total = ref(0)        // 總筆數（由後端回傳，用於計算總頁數）
 
-// ─── 表單資料（每次開 Dialog 都會重設）──────────────────────
+// ─── 表單資料 ────────────────────────────────────────────────
+// 新增時為空值，編輯時會把該列資料填入
 const formData = ref({
   customerName: '',
   origin: '',
@@ -128,6 +132,7 @@ const formData = ref({
 })
 
 // ─── 表單驗證規則 ────────────────────────────────────────────
+// trigger: 'blur' 表示輸入框失去焦點時觸發驗證
 const formRules = {
   customerName: [{ required: true, message: '請輸入客戶名稱', trigger: 'blur' }],
   origin: [{ required: true, message: '請輸入起點', trigger: 'blur' }],
@@ -135,143 +140,146 @@ const formRules = {
   driver: [{ required: true, message: '請輸入司機姓名', trigger: 'blur' }],
 }
 
-// ─── 模擬資料（之後替換成 API 呼叫）─────────────────────────
-const orders = ref([
-  { id: 1, orderNo: 'ORD-20240301', customerName: '台積電', origin: '新竹', destination: '台北', driver: '王大明', status: 1, createdAt: '2024-03-01 09:00' },
-  { id: 2, orderNo: 'ORD-20240302', customerName: '聯發科', origin: '台中', destination: '高雄', driver: '李小華', status: 2, createdAt: '2024-03-01 10:30' },
-  { id: 3, orderNo: 'ORD-20240303', customerName: '鴻海精密', origin: '台南', destination: '桃園', driver: '張阿成', status: 0, createdAt: '2024-03-01 11:00' },
-  { id: 4, orderNo: 'ORD-20240304', customerName: '日月光', origin: '高雄', destination: '台中', driver: '陳志明', status: 1, createdAt: '2024-03-01 13:15' },
-  { id: 5, orderNo: 'ORD-20240305', customerName: '友達光電', origin: '龍潭', destination: '新竹', driver: '林建宏', status: 3, createdAt: '2024-03-01 14:00' },
-  { id: 6, orderNo: 'ORD-20240306', customerName: '華碩電腦', origin: '台北', destination: '台南', driver: '吳志豪', status: 0, createdAt: '2024-03-01 15:00' },
-  { id: 7, orderNo: 'ORD-20240307', customerName: '廣達電腦', origin: '桃園', destination: '台中', driver: '黃俊傑', status: 2, createdAt: '2024-03-01 16:00' },
-])
+// ─── 訂單列表資料 ────────────────────────────────────────────
+// 不再使用本地模擬資料，改由 fetchOrders() 從 API 取得
+const orders = ref([])
 
-// ─── 搜尋過濾（computed 自動響應搜尋條件變化）───────────────
-const filteredOrders = computed(() => {
-  return orders.value.filter(order => {
-    // 關鍵字同時比對訂單編號和客戶名稱
-    const keywordMatch = !searchKeyword.value ||
-      order.orderNo.includes(searchKeyword.value) ||
-      order.customerName.includes(searchKeyword.value)
+// ─── 取得訂單列表（呼叫後端 GET /api/orders）────────────────
+const fetchOrders = async () => {
+  loading.value = true
+  try {
+    // 把搜尋條件和分頁參數傳給後端
+    // status 為 null 時傳 undefined，後端收不到此參數代表查全部
+    const res = await orderApi.getList({
+      page: currentPage.value,
+      pageSize: pageSize.value,
+      keyword: searchKeyword.value,
+      status: searchStatus.value ?? undefined,
+    })
 
-    // 狀態篩選：null 代表全部
-    const statusMatch = searchStatus.value === null ||
-      searchStatus.value === undefined ||
-      order.status === searchStatus.value
-
-    return keywordMatch && statusMatch
-  })
-})
-
-// ─── 分頁切割（computed 依 currentPage 自動更新）─────────────
-const pagedOrders = computed(() => {
-  const start = (currentPage.value - 1) * pageSize.value
-  return filteredOrders.value.slice(start, start + pageSize.value)
-})
-
-// ─── 搜尋 / 重置 ─────────────────────────────────────────────
-const handleSearch = () => {
-  // 搜尋時回到第一頁，避免篩選後停在不存在的頁數
-  currentPage.value = 1
+    // 後端回傳格式：{ total: 總筆數, items: 當頁資料陣列 }
+    orders.value = res.items
+    total.value = res.total
+  } finally {
+    // 無論成功或失敗都要關閉 loading
+    loading.value = false
+  }
 }
 
+// ─── 格式化狀態欄位（el-table formatter）────────────────────
+// el-table 的 formatter 接收 (row, column, cellValue)
+// 回傳要顯示的文字，不支援 HTML，若要顯示 Tag 需用 slot
+// 使用共用工具格式化狀態和日期
+const formatStatus = (row, column, cellValue) => formatOrderStatus(cellValue)
+const formatTime = (row, column, cellValue) => formatDate(cellValue)
+
+// ─── 搜尋：回到第一頁再重新取得資料 ─────────────────────────
+// 避免篩選後停留在不存在的頁碼（例如原本第 5 頁，篩選後只有 1 頁）
+const handleSearch = () => {
+  currentPage.value = 1
+  fetchOrders()
+}
+
+// ─── 重置搜尋條件 ────────────────────────────────────────────
 const handleReset = () => {
   searchKeyword.value = ''
   searchStatus.value = null
   currentPage.value = 1
+  fetchOrders()
 }
 
+// ─── 分頁切換（換頁或換每頁筆數時觸發）─────────────────────
 const handlePageChange = () => {
-  // 分頁變更時可在此加入 API 呼叫
-}
-
-// ─── 格式化狀態欄位 ──────────────────────────────────────────
-const formatStatus = (row, column, cellValue) => {
-  const map = { 0: '待派車', 1: '運送中', 2: '已完成', 3: '已取消' }
-  return map[cellValue] ?? '未知'
+  fetchOrders()
 }
 
 // ─── 開啟新增 Dialog ─────────────────────────────────────────
 const openCreateDialog = () => {
   isEdit.value = false
-  resetForm()
+  resetForm()           // 清空表單資料
   dialogVisible.value = true
 }
 
-// ─── 開啟編輯 Dialog，把該列資料填入表單 ────────────────────
+// ─── 開啟編輯 Dialog ─────────────────────────────────────────
+// 把該列的資料填入表單，用展開運算子複製避免直接修改表格資料
 const openEditDialog = (row) => {
   isEdit.value = true
-  // 用展開運算子複製，避免直接修改表格資料
-  formData.value = { ...row }
+  formData.value = { ...row }  // 淺拷貝，避免修改到 orders 陣列的原始資料
   dialogVisible.value = true
 }
 
 // ─── 重設表單 ────────────────────────────────────────────────
+// Dialog 關閉時也會觸發（@close="resetForm"）
 const resetForm = () => {
-  formData.value = { customerName: '', origin: '', destination: '', driver: '', status: 0 }
-  // formRef 可能還未掛載，加上 ?. 防止報錯
+  formData.value = {
+    customerName: '',
+    origin: '',
+    destination: '',
+    driver: '',
+    status: 0,
+  }
+  // clearValidate() 清除紅色錯誤提示
+  // 加上 ?. 是因為 Dialog 剛開啟時 formRef 可能還未掛載
   formRef.value?.clearValidate()
 }
 
 // ─── 送出表單（新增 or 編輯）────────────────────────────────
 const handleSubmit = async () => {
-  // 先執行表單驗證，驗證失敗就停止
+  // 先執行表單驗證，驗證失敗（catch 回傳 false）就停止
   const valid = await formRef.value?.validate().catch(() => false)
   if (!valid) return
 
   submitLoading.value = true
-
-  // 模擬 API 呼叫延遲（實際串接時換成 await orderApi.create/update）
-  await new Promise(resolve => setTimeout(resolve, 600))
-
-  if (isEdit.value) {
-    // 找到對應資料並更新
-    const index = orders.value.findIndex(o => o.id === formData.value.id)
-    if (index !== -1) orders.value[index] = { ...formData.value }
-    ElMessage.success('訂單已更新')
-  } else {
-    // ─── 產生訂單編號：ORD-YYYYMMDD-XXX（當天日期 + 三位流水號）───
-    const generateOrderNo = () => {
-      // 取得今天日期，格式 YYYYMMDD
-      const today = new Date()
-      const dateStr = today.getFullYear().toString() +
-        String(today.getMonth() + 1).padStart(2, '0') +
-        String(today.getDate()).padStart(2, '0')
-
-      // 找出今天已有的訂單，計算流水號
-      const todayOrders = orders.value.filter(o => o.orderNo.includes(dateStr))
-      const seq = String(todayOrders.length + 1).padStart(3, '0')
-
-      return `ORD-${dateStr}-${seq}`
+  try {
+    if (isEdit.value) {
+      // 編輯模式：呼叫 PUT /api/orders/{id}
+      // 只傳後端 UpdateOrderDto 需要的欄位，不傳 id、orderNo、createdAt 等
+      await orderApi.update(formData.value.id, {
+        customerName: formData.value.customerName,
+        origin: formData.value.origin,
+        destination: formData.value.destination,
+        driver: formData.value.driver,
+        status: formData.value.status,
+      })
+      ElMessage.success('訂單已更新')
+    } else {
+      // 新增模式：呼叫 POST /api/orders
+      // 訂單編號由後端自動產生（ORD-YYYYMMDD-XXX），前端不需傳入
+      await orderApi.create({
+        customerName: formData.value.customerName,
+        origin: formData.value.origin,
+        destination: formData.value.destination,
+        driver: formData.value.driver,
+      })
+      ElMessage.success('訂單已新增')
     }
 
-    const newOrder = {
-      ...formData.value,
-      id: orders.value.length + 1,
-      orderNo: generateOrderNo(),
-      createdAt: new Date().toLocaleString('zh-TW'),
-    }
-    orders.value.unshift(newOrder) // 插到最前面
-    ElMessage.success('訂單已新增')
+    dialogVisible.value = false
+    fetchOrders()  // 送出後重新載入列表，確保畫面資料與資料庫同步
+
+  } finally {
+    submitLoading.value = false
   }
-
-  submitLoading.value = false
-  dialogVisible.value = false
 }
 
-// ─── 刪除訂單（帶確認 Dialog）───────────────────────────────
+// ─── 刪除訂單 ────────────────────────────────────────────────
+// 先跳確認 Dialog，確認後才呼叫 DELETE /api/orders/{id}
 const handleDelete = (row) => {
   ElMessageBox.confirm(
     `確定要刪除訂單 ${row.orderNo}？`,
     '刪除確認',
     { confirmButtonText: '確定刪除', cancelButtonText: '取消', type: 'warning' }
-  ).then(() => {
-    orders.value = orders.value.filter(o => o.id !== row.id)
+  ).then(async () => {
+    await orderApi.delete(row.id)
     ElMessage.success('訂單已刪除')
+    fetchOrders()  // 刪除後重新載入
   }).catch(() => {
     // 使用者點取消，不做任何事
   })
 }
+
+// ─── 生命週期：頁面載入時自動取得第一頁資料 ─────────────────
+onMounted(() => fetchOrders())
 </script>
 
 <style scoped>

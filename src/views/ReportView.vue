@@ -204,8 +204,8 @@ const initGaugeChart = () => {
   gaugeChart.setOption({
     series: [{
       type:   'gauge',
-      center: ['50%', '60%'],
-      radius: '80%',
+      center: ['50%', '55%'],
+      radius: '75%',
       startAngle: 200,
       endAngle:   -20,
       min: 0,
@@ -214,22 +214,28 @@ const initGaugeChart = () => {
       axisLine: {
         lineStyle: {
           width: 20,
-          // 顏色區間：紅→黃→綠
           color: [[0.3, '#f56c6c'], [0.7, '#e6a23c'], [1, '#67c23a']],
         }
       },
       pointer: { itemStyle: { color: 'auto' } },
-      axisTick:   { distance: -25, splitNumber: 5, lineStyle: { width: 1, color: '#999' } },
-      splitLine:  { distance: -35, length: 14, lineStyle: { width: 2, color: '#999' } },
-      axisLabel:  { distance: -20, color: '#999', fontSize: 12 },
-      anchor:     { show: true, showAbove: true, size: 16, itemStyle: { borderWidth: 2 } },
+      axisTick:  { distance: -25, splitNumber: 5, lineStyle: { width: 1, color: '#999' } },
+      splitLine: { distance: -35, length: 14,     lineStyle: { width: 2, color: '#999' } },
+      axisLabel: { distance: -20, color: '#999',  fontSize: 12 },
+      anchor:    { show: true, showAbove: true, size: 16, itemStyle: { borderWidth: 2 } },
+      title: {
+        // 標題往下移，避免與數值重疊
+        offsetCenter: [0, '75%'],
+        fontSize:     14,
+        color:        '#606266',
+      },
       detail: {
         valueAnimation: true,
         fontSize:       36,
         fontWeight:     'bold',
         formatter:      '{value}%',
         color:          'inherit',
-        offsetCenter:   [0, '30%'],
+        // 數值位置往上移
+        offsetCenter:   [0, '45%'],
       },
       data: [{ value: 73, name: '車輛使用率' }],
     }],
